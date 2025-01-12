@@ -21,14 +21,21 @@ const movies = [
     backdrop: "https://m.media-amazon.com/images/I/81xTx-LyY-L._AC_SL1500_.jpg"
   }
 ];
-import { View, Image, StyleSheet, Dimensions, Animated, FlatList, TouchableOpacity } from 'react-native';
+import { View, Image, StyleSheet, Dimensions, FlatList, TouchableOpacity, Pressable } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import React from 'react';
 import MaskedView from '@react-native-masked-view/masked-view';
 import Svg, { Rect } from "react-native-svg"
 import { LinearGradient } from 'expo-linear-gradient';
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { useRouter } from 'expo-router';
+import { useNavigation, useRouter } from 'expo-router';
+import Animated, {
+  interpolate, useAnimatedStyle, useSharedValue,
+  Extrapolation,
+  withTiming,
+  withSpring,
+  ReduceMotion,
+} from 'react-native-reanimated';
 
 
 const AnimatedSVG = Animated.createAnimatedComponent(Svg);
@@ -36,7 +43,7 @@ const AnimatedSVG = Animated.createAnimatedComponent(Svg);
 
 const { width, height } = Dimensions.get('window');
 const SPACING = 10;
-const ITEM_SIZE = width * 0.72;
+const ITEM_SIZE = width * 0.75;
 const SPACER_ITEM_SIZE = (width - ITEM_SIZE) / 2;
 const BACKDROP_HEIGHT = height * 0.6
 
@@ -44,48 +51,13 @@ const Backdrop = ({ movies, scrollX }) => {
   const colorScheme = useColorScheme();
   return (
     <View style={{ height: BACKDROP_HEIGHT, width, position: 'absolute' }}>
+
       <FlatList
         data={movies}
         keyExtractor={(item) => item.key}
         removeClippedSubviews={false}
         contentContainerStyle={{ width, height: BACKDROP_HEIGHT }}
-        renderItem={({ item, index }) => {
-          if (!item.poster) {
-            return null;
-          }
-          const translateX = scrollX.interpolate({
-            inputRange: [(index - 1) * ITEM_SIZE, (index) * ITEM_SIZE],
-            outputRange: [width, 0],
-          });
-          return (
-            <MaskedView
-              style={{ position: "absolute", width, height: BACKDROP_HEIGHT }}
-              maskElement={
-                <AnimatedSVG
-                  style={{ transform: [{ translateX }] }}
-                  width={width}
-                  height={BACKDROP_HEIGHT}
-                  viewBox={`0 0 ${width} ${BACKDROP_HEIGHT}`}
-                >
-                  <Rect
-                    width={width}
-                    height={BACKDROP_HEIGHT}
-                    fill="white"
-                  />
-                </AnimatedSVG>
-              }
-            >
-              <Image
-                source={{ uri: item.poster }}
-                style={{
-                  width,
-                  height: BACKDROP_HEIGHT,
-                  resizeMode: 'cover',
-                }}
-              />
-            </MaskedView>
-          );
-        }}
+        renderItem={({ item, index }) => <BackdropItem item={item} index={index} scrollX={scrollX} />}
       />
       <LinearGradient
         colors={['transparent', colorScheme === 'dark' ? 'black' : 'white']}
@@ -101,15 +73,106 @@ const Backdrop = ({ movies, scrollX }) => {
 };
 
 
+const BackdropItem = ({ item, index, scrollX }) => {
+  if (!item.poster) {
+    return null;
+  }
+
+  const animatedStyle = useAnimatedStyle(() => {
+    const translateX = interpolate(scrollX.value, [(index - 1) * ITEM_SIZE, index * ITEM_SIZE],[width, 0],Extrapolation.CLAMP);
+
+    return {
+      transform: [{
+        translateX: translateX,  
+      }],
+    };
+  });
+
+  return (
+    <MaskedView
+      style={{ position: "absolute", width, height: BACKDROP_HEIGHT }}
+      maskElement={
+        <AnimatedSVG
+          style={animatedStyle}
+          width={width}
+          height={BACKDROP_HEIGHT}
+          viewBox={`0 0 ${width} ${BACKDROP_HEIGHT}`}
+        >
+          <Rect
+            width={width}
+            height={BACKDROP_HEIGHT}
+            fill="white"
+          />
+        </AnimatedSVG>
+      }
+    >
+      <Image
+        source={{ uri: item.poster }}
+        style={{
+          width,
+          height: BACKDROP_HEIGHT,
+          resizeMode: 'cover',
+        }}
+      />
+    </MaskedView>
+  );
+};
+
+const Card = ({ item, index, scrollX }) => {
+  const navigation = useNavigation();
+
+  if (!item.poster) {
+    return <View style={{ width: SPACER_ITEM_SIZE }} />;
+  }
+
+  const inputRange = [
+    (index - 2) * ITEM_SIZE,
+    (index - 1) * ITEM_SIZE,
+    index * ITEM_SIZE,
+  ];
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollX.value,
+      inputRange, [0.7, 1, 0.7],Extrapolation.CLAMP
+    ),
+    transform: [{
+      translateY: interpolate(scrollX.value,
+        inputRange, [100, 50, 100],Extrapolation.CLAMP)
+    }]
+  }));
+
+
+  return (
+    <Pressable
+      onPress={() => {
+        navigation.navigate('details', { tag: item.key, poster: item.poster })
+      }}
+      activeOpacity={.7}
+      style={{ width: ITEM_SIZE }}
+    >
+
+      <Animated.View style={[styles.card, animatedStyle]}>
+        <Animated.Image
+          sharedTransitionTag={`item ${item.key}`}
+          source={{ uri: item.poster }}
+          style={styles.posterImage}
+        />
+      </Animated.View>
+    </Pressable>
+
+  );
+}
+
 export default function HomeScreen() {
-  const router = useRouter();
+
+
   const moviesWspacers = [
     { key: 'left-spacer' },
     ...movies.map((movie, index) => ({ ...movie, key: `${index}` })),
     { key: 'right-spacer' },
   ];
 
-  const scrollX = React.useRef(new Animated.Value(0)).current;
+  const scrollX = useSharedValue(0);
 
   return (
     <View style={styles.container}>
@@ -125,58 +188,29 @@ export default function HomeScreen() {
         horizontal
         contentContainerStyle={{
           alignItems: 'center',
-
-          backgroundColor: 'transparent',
         }}
-        onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-          { useNativeDriver: true }
-        )}
+        onScroll={(event) => {
+          const offsetX = event.nativeEvent.contentOffset.x;
+          
+          scrollX.value = withSpring(offsetX,  {
+            duration: 251,
+            dampingRatio: 1.02,
+            stiffness: 500,
+            overshootClamping: false,
+            restDisplacementThreshold: 150,
+            restSpeedThreshold: 150,
+            reduceMotion: ReduceMotion.Never,
+          });
+        }}
         scrollEventThrottle={16}
         snapToInterval={ITEM_SIZE}
         decelerationRate="fast"
-        renderItem={({ item, index }) => {
-          if (!item.poster) {
-            return <View style={{ width: SPACER_ITEM_SIZE }} />;
-          }
-
-          const inputRange = [
-            (index - 2) * ITEM_SIZE,
-            (index - 1) * ITEM_SIZE,
-            index * ITEM_SIZE,
-          ];
-
-          const translateY = scrollX.interpolate({
-            inputRange,
-            outputRange: [100, 50, 100],
-            extrapolate: 'clamp',
-          });
-
-          return (
-            <TouchableOpacity
-              onPress={() => {
-                router.push({
-                  pathname: "/details",
-                  params: { key: item.key, poster: item.poster },
-                });
-              }}
-              activeOpacity={.7}
-              style={{ width: ITEM_SIZE }}
-            >
-              <Animated.View style={[styles.card, { transform: [{ translateY }] }]}>
-                  <Image
-                    source={{ uri: item.poster }}
-                    style={styles.posterImage}
-                  />
-              </Animated.View>
-            </TouchableOpacity>
-
-          );
-        }}
+        renderItem={({ item, index }) => <Card scrollX={scrollX} item={item} index={index} />}
       />
     </View>
   );
 }
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -199,3 +233,5 @@ const styles = StyleSheet.create({
     borderRadius: 24,
   },
 });
+
+
