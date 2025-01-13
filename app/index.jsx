@@ -21,37 +21,31 @@ const movies = [
     backdrop: "https://m.media-amazon.com/images/I/81xTx-LyY-L._AC_SL1500_.jpg"
   }
 ];
-import { View, Image, StyleSheet, Dimensions, FlatList, TouchableOpacity, Pressable } from 'react-native';
+
+import { View, Image, StyleSheet, Dimensions, FlatList, Pressable } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import React from 'react';
 import MaskedView from '@react-native-masked-view/masked-view';
-import Svg, { Rect } from "react-native-svg"
+import Svg, { Rect } from "react-native-svg";
 import { LinearGradient } from 'expo-linear-gradient';
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { useNavigation, useRouter } from 'expo-router';
+import { useNavigation } from 'expo-router';
 import Animated, {
-  interpolate, useAnimatedStyle, useSharedValue,
-  Extrapolation,
-  withTiming,
-  withSpring,
-  ReduceMotion,
+  interpolate, useAnimatedStyle, useSharedValue, Extrapolation, useAnimatedScrollHandler, FadeInDown,
 } from 'react-native-reanimated';
 
-
 const AnimatedSVG = Animated.createAnimatedComponent(Svg);
-
 
 const { width, height } = Dimensions.get('window');
 const SPACING = 10;
 const ITEM_SIZE = width * 0.75;
 const SPACER_ITEM_SIZE = (width - ITEM_SIZE) / 2;
-const BACKDROP_HEIGHT = height * 0.6
+const BACKDROP_HEIGHT = height * 0.6;
 
 const Backdrop = ({ movies, scrollX }) => {
   const colorScheme = useColorScheme();
   return (
     <View style={{ height: BACKDROP_HEIGHT, width, position: 'absolute' }}>
-
       <FlatList
         data={movies}
         keyExtractor={(item) => item.key}
@@ -72,19 +66,21 @@ const Backdrop = ({ movies, scrollX }) => {
   );
 };
 
-
 const BackdropItem = ({ item, index, scrollX }) => {
   if (!item.poster) {
     return null;
   }
 
   const animatedStyle = useAnimatedStyle(() => {
-    const translateX = interpolate(scrollX.value, [(index - 1) * ITEM_SIZE, index * ITEM_SIZE],[width, 0],Extrapolation.CLAMP);
+    const translateX = interpolate(
+      scrollX.value,
+      [(index - 1) * ITEM_SIZE, index * ITEM_SIZE],
+      [width, 0],
+      Extrapolation.CLAMP
+    );
 
     return {
-      transform: [{
-        translateX: translateX,  
-      }],
+      transform: [{ translateX }],
     };
   });
 
@@ -98,11 +94,7 @@ const BackdropItem = ({ item, index, scrollX }) => {
           height={BACKDROP_HEIGHT}
           viewBox={`0 0 ${width} ${BACKDROP_HEIGHT}`}
         >
-          <Rect
-            width={width}
-            height={BACKDROP_HEIGHT}
-            fill="white"
-          />
+          <Rect width={width} height={BACKDROP_HEIGHT} fill="white" />
         </AnimatedSVG>
       }
     >
@@ -131,41 +123,48 @@ const Card = ({ item, index, scrollX }) => {
     index * ITEM_SIZE,
   ];
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollX.value,
-      inputRange, [0.7, 1, 0.7],Extrapolation.CLAMP
-    ),
-    transform: [{
-      translateY: interpolate(scrollX.value,
-        inputRange, [100, 50, 100],Extrapolation.CLAMP)
-    }]
-  }));
+  const animatedStyle = useAnimatedStyle(() => {
+    const translateY = interpolate(
+      scrollX.value,
+      inputRange,
+      [100, 50, 100],
+      Extrapolation.CLAMP
+    );
+    const opacity = interpolate(
+      scrollX.value,
+      inputRange,
+      [0.7, 1, 0.7],
+      Extrapolation.CLAMP
+    );
 
+    return {
+      opacity,
+      transform: [{ translateY }],
+    };
+  });
 
   return (
-    <Pressable
-      onPress={() => {
-        navigation.navigate('details', { tag: item.key, poster: item.poster })
-      }}
-      activeOpacity={.7}
-      style={{ width: ITEM_SIZE }}
-    >
-
-      <Animated.View style={[styles.card, animatedStyle]}>
-        <Animated.Image
-          sharedTransitionTag={`item ${item.key}`}
-          source={{ uri: item.poster }}
-          style={styles.posterImage}
-        />
-      </Animated.View>
-    </Pressable>
-
+    <Animated.View entering={FadeInDown.duration(300 * index).springify()}>
+      <Pressable
+        onPress={() => {
+          navigation.navigate('details', { tag: item.key, poster: item.poster });
+        }}
+        activeOpacity={0.7}
+        style={{ width: ITEM_SIZE }}
+      >
+        <Animated.View sharedTransitionTag={`card ${item.key}`} style={[styles.card, animatedStyle]}>
+          <Animated.Image
+            sharedTransitionTag={`item ${item.key}`}
+            source={{ uri: item.poster }}
+            style={styles.posterImage}
+          />
+        </Animated.View>
+      </Pressable>
+    </Animated.View>
   );
-}
+};
 
 export default function HomeScreen() {
-
-
   const moviesWspacers = [
     { key: 'left-spacer' },
     ...movies.map((movie, index) => ({ ...movie, key: `${index}` })),
@@ -174,12 +173,21 @@ export default function HomeScreen() {
 
   const scrollX = useSharedValue(0);
 
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      scrollX.value = event.contentOffset.x;
+    },
+  });
+
   return (
     <View style={styles.container}>
       <StatusBar hidden />
-      <Backdrop movies={moviesWspacers.filter(
-        (movie) => movie.key !== 'left-spacer' && movie.key !== 'right-spacer'
-      )} scrollX={scrollX} />
+      <Backdrop
+        movies={moviesWspacers.filter(
+          (movie) => movie.key !== 'left-spacer' && movie.key !== 'right-spacer'
+        )}
+        scrollX={scrollX}
+      />
       <Animated.FlatList
         bounces={false}
         showsHorizontalScrollIndicator={false}
@@ -189,19 +197,7 @@ export default function HomeScreen() {
         contentContainerStyle={{
           alignItems: 'center',
         }}
-        onScroll={(event) => {
-          const offsetX = event.nativeEvent.contentOffset.x;
-          
-          scrollX.value = withSpring(offsetX,  {
-            duration: 251,
-            dampingRatio: 1.02,
-            stiffness: 500,
-            overshootClamping: false,
-            restDisplacementThreshold: 150,
-            restSpeedThreshold: 150,
-            reduceMotion: ReduceMotion.Never,
-          });
-        }}
+        onScroll={scrollHandler}
         scrollEventThrottle={16}
         snapToInterval={ITEM_SIZE}
         decelerationRate="fast"
@@ -233,5 +229,3 @@ const styles = StyleSheet.create({
     borderRadius: 24,
   },
 });
-
-

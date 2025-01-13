@@ -23,7 +23,7 @@ export default function DetailsScreen() {
           bottom: 0,
         }}
       />
-      <Animated.View sharedTransitionTag={`modal ${tag}`} style={styles.modal}>
+      <Animated.View sharedTransitionTag={`card ${tag}`} style={styles.modal}>
 
       </Animated.View>
     </View>
